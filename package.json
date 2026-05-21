@@ -6,11 +6,16 @@
   "description": "Front-end engineer AI agent (Cloudflare Agents SDK) with built-in Biome linting and a UI wiring audit.",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:client": "vite",
     "deploy": "wrangler deploy",
     "types": "wrangler types",
     "typecheck": "tsc --noEmit",
+    "typecheck:client": "tsc --noEmit --project client/tsconfig.json",
+    "build:client": "vite build",
+    "build": "npm run build:client",
     "test:audit": "node --experimental-strip-types scripts/test-audit.ts",
-    "test:lint": "node --experimental-strip-types scripts/test-lint.ts"
+    "test:lint": "node --experimental-strip-types scripts/test-lint.ts",
+    "test": "npm run test:audit && npm run test:lint"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.190",
@@ -31,7 +36,11 @@
   "devDependencies": {
     "@biomejs/wasm-nodejs": "^1.9.4",
     "@types/node": "^22.10.5",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.7.3",
+    "vite": "^6.4.2",
     "wrangler": "^4.0.0"
   }
 }
