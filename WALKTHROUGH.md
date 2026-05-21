@@ -1,24 +1,74 @@
-# Walkthrough: Reviewing a Real Production App
+# Walkthrough: Auditing a Real Trading Terminal
 
-This is a live audit of **HyperMap** — a Hyperliquid trading terminal built with React 19, Tailwind v4, and lightweight-charts v5. The codebase has a mature design system documented in `docs/DESIGN.md` ("Institutional Terminal Alpha"). We'll run fe-engineer against it from scratch.
+This is a live audit of **HyperMap** — a Hyperliquid perpetuals terminal built with React 19, Tailwind v4, and lightweight-charts v5. It has four layout modes, three chart types, and a real-time order book. We'll audit the whole component surface using fe-engineer before shipping.
 
 ---
 
 ## The app
 
-![HyperMap — Institutional Terminal Alpha](docs/screenshots/hypermap-full.png)
+HyperMap runs at `localhost:3000` (Express + Vite). Four layout modes selectable from the top-right toolbar.
 
-*Cockpit-dense. Every panel filled. Mark price, candlestick chart, order book, execution terminal, AI inference budget — all above the fold.*
+### ALPHA — default, full-density cockpit
 
-![HyperMap header](docs/screenshots/header.png)
+![ALPHA layout](docs/screenshots/layout-alpha.png)
 
-*Header: node latency, colo location, nav, wallet connect. Sharp corners, monospace data, uppercase labels.*
+*Mark price, liquidation zones, candlestick chart, order depth, order book, AI inference panel, execution terminal — all visible simultaneously. Every pixel earns its place.*
+
+### MONOLITH — chart-dominant
+
+![MONOLITH layout](docs/screenshots/layout-monolith.png)
+
+*Chart takes full centre width. Order book compressed to the right edge. Suits single-monitor setups focused on price action.*
+
+### NEON — cyan accent variant
+
+![NEON layout](docs/screenshots/layout-neon.png)
+
+*Same density as ALPHA, cyan highlight on the active right column. The primary token (`#4cd7f6`) used as a structural accent.*
+
+### COCKPIT — maximum data density
+
+![COCKPIT layout](docs/screenshots/layout-cockpit.png)
+
+*Narrower gutters, more rows visible in the order book and liquidation zones. Built for 4K or ultrawide.*
 
 ---
 
-## Step 1 — Generate tokens from DESIGN.md
+## Chart type and timeframe controls
 
-HyperMap has a `docs/DESIGN.md` with color tables and design rules but no standalone `tokens.css`. Start by extracting machine-readable tokens from the doc:
+Three chart modes, six timeframes — all switchable without a page reload.
+
+### HEATMAP — order flow concentration
+
+![HEATMAP mode](docs/screenshots/chart-heatmap.png)
+
+*Liquidity heatmap overlay on the price chart. Volume clusters rendered as `rgba(78, 222, 163, α)` (secondary token) — the design system's sanctioned canvas colour.*
+
+### FOOTPRINT — volume-at-price bars
+
+![FOOTPRINT mode](docs/screenshots/chart-footprint.png)
+
+*Each bar broken into bid/ask volume at price. Long green strips = absorption. The colour values here must match design tokens exactly — a common source of drift.*
+
+### Daily chart (1D timeframe)
+
+![1D timeframe](docs/screenshots/chart-1d.png)
+
+*Monthly candles visible. Same component, same code — the timeframe selector just changes the data slice fed to lightweight-charts.*
+
+### TRADES tab
+
+![TRADES tab](docs/screenshots/tab-trades.png)
+
+*Switches the bottom-right panel from ORDER BOOK depth to live trade stream. The tab toggle is a pair of `<button>` elements — prime candidates for the UI wiring audit.*
+
+---
+
+## Running the audit
+
+### Step 1 — Generate tokens from DESIGN.md
+
+HyperMap has a mature design system in `docs/DESIGN.md` ("Institutional Terminal Alpha") but no standalone token file. Start there:
 
 ```
 mcp__fe-engineer__generate_tokens({
@@ -27,225 +77,218 @@ mcp__fe-engineer__generate_tokens({
 })
 ```
 
-The tool parses the markdown tables — including the explicit `CSS Variable` column in the surface table and the inferred `bg-*` / `text-*` / `border-*` names in the others — and writes `docs/tokens.css`:
+The tool scans every markdown table for hex values and CSS variable names, handles combined Tailwind class cells like `` `border-outline` / `bg-outline` ``, and writes `docs/tokens.css`:
 
 ```
 {
   "writtenTo": "docs/tokens.css",
   "colorCount": 19,
-  "spacingCount": 0,
   "totalTokens": 19,
   "warnings": []
 }
 ```
 
-The generated file:
+Generated output (excerpt):
 
 ```css
-/**
- * Design Tokens — generated from DESIGN.md
- * Tool: fe-engineer › generate_tokens
- */
-
 :root {
-
-  /* ── Color Tokens ──────────────────────────────────── */
-
-  --color-surface:                    #15111e;   /* Primary canvas — outermost background */
-  --color-surface-dim:                #15111e;   /* Dim variant (same as surface) */
-  --color-surface-bright:             #3b3745;   /* Bright surface for hover highlights */
-  --color-surface-container-lowest:   #0f0c19;   /* Deepest inset — textarea, log wells */
-  --color-surface-container-low:      #1d1a27;   /* Subtle inset */
-  --color-surface-container:          #211e2b;   /* Standard panel background */
-  --color-surface-container-high:     #2c2835;   /* Elevated panel */
-  --color-surface-container-highest:  #373341;   /* Topmost layer — dropdowns, modals */
-  --color-on-surface:                 #e7dff2;   /* Primary text */
-  --color-on-surface-variant:         #bcc9cd;   /* Muted / secondary text */
-  --color-outline:                    #869397;   /* Visible borders */
+  --color-surface:                    #15111e;   /* Primary canvas */
+  --color-primary:                    #4cd7f6;   /* Cyan — active, CTA */
+  --color-secondary:                  #4edea3;   /* Green — long, profit */
+  --color-error:                      #ffb4ab;   /* Rose — short, loss */
   --color-outline-variant:            #3d494c;   /* Divider lines */
-  --color-primary:                    #4cd7f6;   /* Cyan — active, interactive, CTA */
-  --color-on-primary:                 #003640;
-  --color-secondary:                  #4edea3;   /* Green — long, positive, profit */
-  --color-tertiary:                   #ffb873;   /* Orange — attention, warning */
-  --color-error:                      #ffb4ab;   /* Rose — short, negative, loss */
-  --color-background:                 #15111e;
+  /* ... 14 more */
 }
 ```
 
-Now we have a token set. Any hardcoded hex in component code that doesn't appear here is a violation.
+Now any hardcoded hex in component code that doesn't appear in this set is a design system violation.
 
 ---
 
-## Step 2 — Full audit, all 13 components
+### Step 2 — Audit the full component surface
+
+Run `review_file` across all 13 components with the token context:
 
 ```
 mcp__fe-engineer__review_file({
-  filePath: "src/components/AIGatewayPicker.tsx",
+  filePath: "src/components/TradingChart.tsx",
   designFile: "docs/tokens.css",
   cwd: "/path/to/HyperMap"
 })
 ```
 
-Run across all 14 files (13 components + App.tsx). Summary:
+Results across the whole surface:
 
-| File | Lint | A11y | Design |
-|------|------|------|--------|
-| `TradingChart.tsx` | **61 errors** | 1 warning | 3 warnings |
-| `TopUpModal.tsx` | **8 errors** | 1 error, 1 warning | — |
-| `AIInsights.tsx` | **8 errors** | 1 error | 2 warnings |
-| `PaymentTopUp.tsx` | **7 errors** | 2 errors | — |
-| `AIGatewayPicker.tsx` | — | **4 errors** | 1 warning |
-| `BalanceWidget.tsx` | 2 errors | — | 1 warning |
-| `LiquidityHeatmap.tsx` | 1 error | — | 1 warning |
-| `App.tsx` | — | — | 1 warning |
-| `TradeTicket.tsx` | — | — | 1 warning |
-| `PositionPanel.tsx` | — | — | — |
-| `ModelInfoTooltip.tsx` | — | — | — |
-| `Header.tsx` | ✓ clean | ✓ clean | ✓ clean |
-| `WalletConnect.tsx` | ✓ clean | ✓ clean | ✓ clean |
+| Component | What it renders | Lint | A11y | Design |
+|-----------|----------------|------|------|--------|
+| `TradingChart.tsx` | Candlestick/heatmap/footprint chart | **61 errors** | 1 warn | 3 warn |
+| `TopUpModal.tsx` | Payment top-up overlay | **8 errors** | 1 error, 1 warn | — |
+| `AIInsights.tsx` | AI inference panel | **8 errors** | 1 error | 2 warn |
+| `PaymentTopUp.tsx` | Top-up form | **7 errors** | 2 errors | — |
+| `AIGatewayPicker.tsx` | Gateway selector dropdown | — | **4 errors** | 1 warn |
+| `BalanceWidget.tsx` | Market context sidebar | 2 errors | — | 1 warn |
+| `LiquidityHeatmap.tsx` | Heatmap canvas overlay | 1 error | — | 1 warn |
+| `App.tsx` | Root layout + layout switcher | — | — | 1 warn |
+| `TradeTicket.tsx` | Execution terminal | — | — | 1 warn |
+| `PositionPanel.tsx` | Positions list | — | — | — |
+| `ModelInfoTooltip.tsx` | Model info hover | — | — | — |
+| `Header.tsx` | Top navigation bar | ✓ | ✓ | ✓ |
+| `WalletConnect.tsx` | Wallet button | ✓ | ✓ | ✓ |
 
 ---
 
-## What the findings look like
+## What the findings mean in context
 
-### AIGatewayPicker — 4 unlabelled buttons
+### TradingChart — 61 lint errors
 
-The picker has icon-only controls — close, expand, select, configure — with no accessible names. Each fires a `WCAG 4.1.2` error:
-
-```json
-{
-  "element": "<button>",
-  "line": 178,
-  "issue": "button-icon-only",
-  "severity": "error",
-  "detail": "Button appears to have no accessible name. Add aria-label or visible text.",
-  "wcag": "4.1.2"
-}
-```
-
-The fix is one attribute per button:
-```jsx
-// before
-<button onClick={onClose}><XIcon /></button>
-
-// after
-<button onClick={onClose} aria-label="Close AI gateway picker"><XIcon /></button>
-```
-
-### TopUpModal — semantic HTML and keyboard access
-
-The modal backdrop is a `<div onClick>` with no `role`:
-
-```json
-{
-  "element": "<div>",
-  "line": 50,
-  "issue": "interactive-no-role",
-  "severity": "error",
-  "detail": "<div onClick> has no role. Add role=\"button\" or use <dialog>.",
-  "wcag": "4.1.2"
-}
-```
-
-Biome is already telling you the fix — `lint/a11y/useSemanticElements` suggests converting the whole modal to `<dialog>`, which also resolves the `aria-modal` complaint (that attribute is only valid on `role="dialog"` elements, not bare `<div>`s).
-
-The SVG close icon (line 69) additionally needs `aria-hidden="true"` since it's decorative.
-
-### TradingChart — 61 lint errors, all `any`
-
-The chart is the app's most complex component at 584 lines. Every Lightweight Charts v5 callback and series config is typed as `any`:
+The chart drives every view you saw above — candlestick, heatmap, footprint. All 61 errors are `noExplicitAny`:
 
 ```
 [error] lint/suspicious/noExplicitAny — Unexpected any. Specify a different type.
 ```
 
-61 occurrences. The lightweight-charts v5 package ships full TypeScript types — `IChartApi`, `ISeriesApi<'Candlestick'>`, `CandlestickData`, `MouseEventParams`. Replacing `any` here eliminates the lint bill and catches real bugs (wrong field names on series data, incompatible config keys).
+lightweight-charts v5 ships full TypeScript types: `IChartApi`, `ISeriesApi<'Candlestick'>`, `CandlestickData`, `MouseEventParams`. Replacing `any` here catches real bugs — wrong field names on series updates, incompatible config keys passed to `createChart()` — not just cosmetic noise.
 
-### AIInsights — string concatenation + deep ternaries
+The one a11y warning: the inline SVG watermark (line 497) needs `aria-hidden="true"` since it's purely decorative.
 
+The three design warnings are inline `style` props on `<div>` elements used for the chart container sizing (lines 519, 547, 563). These bypass the design system and can't be overridden by layout modes. The fix is CSS classes with the container dimensions.
+
+### AIGatewayPicker — 4 unlabelled buttons
+
+The gateway picker (triggered by the **AI GATEWAY** button in the header) has four icon-only controls with no accessible names — each fires `WCAG 4.1.2`:
+
+```json
+{ "element": "<button>", "line": 178, "issue": "button-icon-only",
+  "detail": "Button appears to have no accessible name. Add aria-label or visible text.",
+  "wcag": "4.1.2" }
 ```
-[error] lint/style/useTemplate — Template literals are preferred over string concatenation.
-```
 
-Two deep ternaries in JSX (depth ≥ 2) that should be extracted to variables:
+Same error on lines 218, 247, 273. One attribute each:
 
 ```jsx
-// before — hard to read, flags lint/design both
-{isLoading ? spinner : hasData ? <Chart /> : <Empty />}
+// before
+<button onClick={onClose}><XIcon /></button>
 
 // after
-const content = isLoading ? spinner : hasData ? <Chart /> : <Empty />;
-return <div>{content}</div>;
+<button onClick={onClose} aria-label="Close gateway picker"><XIcon /></button>
 ```
+
+### TopUpModal — use `<dialog>`, not a div
+
+The modal backdrop is a `<div onClick>` with `role="dialog"` and `aria-modal` set on it:
+
+```
+[error] lint/nursery/useAriaPropsSupportedByRole
+  — aria-modal is not supported by this element
+[error] lint/a11y/useSemanticElements
+  — Elements with role="dialog" can be changed to <dialog>
+[error] lint/a11y/useKeyWithClickEvents
+  — onClick without onKeyUp/onKeyDown
+```
+
+The native `<dialog>` element handles all of this: focus trapping, `aria-modal`, `Escape` to close, scroll locking. Converting `<div role="dialog">` to `<dialog>` resolves six of the eight lint errors in one change.
 
 ### PaymentTopUp — unlabelled amount input
 
+The amount field (line 96) has no label:
+
 ```json
-{
-  "element": "<input type=\"number\">",
-  "line": 96,
-  "issue": "input-no-label",
-  "severity": "error",
+{ "element": "<input type=\"number\">", "line": 96,
+  "issue": "input-no-label", "severity": "error",
   "detail": "Input has no aria-label or aria-labelledby.",
-  "wcag": "1.3.1"
-}
+  "wcag": "1.3.1" }
 ```
 
-The amount field has no label — screen readers announce it as "number field" with no context. Fix: add `aria-label="Top-up amount in USDC"` or pair with a `<label htmlFor>`.
+Screen readers announce it as "number field" — no context. Fix: `aria-label="Top-up amount in USDC"`.
 
----
+### AIInsights — deep ternaries in the AI panel
 
-## Step 3 — Design-aware scan in action
-
-With `tokens.css` loaded, the design scanner cross-references hardcoded values against your token set. The `TradingChart.tsx` inline styles on lines 519, 547, 563 flag as:
+Two nested ternaries at depth ≥ 2 in the inference output panel (lines 192, 230):
 
 ```json
-{
-  "issue": "inline-style",
-  "severity": "warning",
-  "detail": "<div> uses an inline style prop.",
-  "suggestion": "Move styles to a CSS class or design token. Inline styles bypass your design system and can't be overridden by themes."
-}
+{ "issue": "deep-ternary", "severity": "warning",
+  "detail": "JSX contains a 2-level nested ternary — hard to read and maintain." }
 ```
 
-Any `#hex` value found in a style prop that's *not* in `tokens.css` escalates to `hardcoded-color`. In this codebase the chart component is the only sanctioned location for hardcoded hex (lightweight-charts can't read CSS variables) — and the values there correctly match the token set, so no violations surface.
+```jsx
+// before
+{isLoading ? <Spinner /> : hasData ? <Chart data={data} /> : <Empty />}
+
+// after
+const content = isLoading ? <Spinner /> : hasData ? <Chart data={data} /> : <Empty />;
+return <div>{content}</div>;
+```
+
+### BalanceWidget — exhaustive deps
+
+```
+[error] lint/correctness/useExhaustiveDependencies
+  — This hook does not specify all of its dependencies: refresh
+[error] lint/correctness/useExhaustiveDependencies
+  — This hook specifies more dependencies than necessary: userId, refreshTrigger
+```
+
+The market context sidebar (top-left in ALPHA/NEON/COCKPIT layouts) has a `useEffect` with a stale dependency array. This causes missed refreshes on node reconnect — a real bug, not just a lint nit.
 
 ---
 
-## Step 4 — If you start with only a DESIGN.md
+## Design-aware scan in action
 
-Most projects don't have a tokens file yet. The workflow:
+With `tokens.css` loaded the scanner cross-references hardcoded values against your token set. None of the chart canvas colours trigger violations because they correctly match the token hex values:
+
+```js
+// CORRECT — matches --color-secondary (#4edea3)
+ctx.fillStyle = `rgba(78, 222, 163, ${alpha})`;
+
+// CORRECT — matches --color-error (#ffb4ab)
+ctx.fillStyle = `rgba(255, 180, 171, ${alpha})`;
+```
+
+DESIGN.md explicitly sanctions hardcoded hex in the chart config section (lightweight-charts can't read CSS variables). The scanner flags the inline `style` props on the chart wrapper divs, which are *not* sanctioned — those should use CSS classes.
+
+---
+
+## What clean looks like
+
+`Header.tsx` and `WalletConnect.tsx` passed everything — lint, a11y, design. 
+
+`Header.tsx` is the reference implementation: semantic HTML, every interactive element labelled, no inline styles, no hardcoded values. The layout switcher buttons (ALPHA / MONOLITH / NEON / COCKPIT) use the exact class strings from DESIGN.md §5 — `bg-primary text-on-primary` for active, `bg-surface-container text-on-surface-variant` for inactive.
+
+If you're writing a new component, start by reading `Header.tsx`.
+
+---
+
+## Full workflow reference
 
 ```
-# 1. Generate tokens from your design doc
+# If you only have a design doc
 mcp__fe-engineer__generate_tokens({
   designFile: "docs/DESIGN.md",
   cwd: "/path/to/project"
 })
-# → writes docs/tokens.css
 
-# 2. Review a component with the token context
+# Audit one file with design context
 mcp__fe-engineer__review_file({
-  filePath: "src/components/MyComponent.tsx",
+  filePath: "src/components/AIGatewayPicker.tsx",
   designFile: "docs/tokens.css",
   cwd: "/path/to/project"
 })
+
+# Audit without design context (generic rules only)
+mcp__fe-engineer__review_file({
+  filePath: "src/components/TopUpModal.tsx",
+  cwd: "/path/to/project"
+})
+
+# Just accessibility
+mcp__fe-engineer__audit_a11y({
+  code: "<paste source here>",
+  filePath: "PaymentTopUp.tsx"
+})
+
+# Just lint
+mcp__fe-engineer__lint_fix({
+  code: "<paste source here>",
+  filePath: "TradingChart.tsx"
+})
 ```
-
-`generate_tokens` handles three table formats:
-
-| Format | Example |
-|--------|---------|
-| Explicit CSS variable column | `\| bg-surface \| --color-surface \| #15111e \| ...` |
-| Tailwind class + hex (inferred) | `\| text-on-surface \| #e7dff2 \| Primary text \|` |
-| Combined classes + hex | `\| border-outline / bg-outline \| #869397 \| Borders \|` |
-
-It also scans CSS code blocks inside the doc for `--var: value;` declarations.
-
----
-
-## What's clean out of the box
-
-`Header.tsx` and `WalletConnect.tsx` passed every check — lint, a11y, design. Both use semantic HTML, proper button labelling, no inline styles, and no hardcoded values. They're the reference implementation for the rest of the codebase.
-
-`Header.tsx` in particular is worth reading if you're about to write a new component — it's what the DESIGN.md component patterns look like in practice.
