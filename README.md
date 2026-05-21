@@ -75,7 +75,8 @@ Restart Claude Code. Tools show up as `mcp__fe-engineer__*`.
 | Tool | What it does |
 |------|-------------|
 | `review_file` | Read a file from disk and run all four audits. Start here. |
-| `load_design_context` | Parse a design baseline into structured context (color tokens, spacing tokens, component names). |
+| `generate_tokens` | Parse a DESIGN.md and write a `tokens.css`. Handles markdown color tables and CSS code blocks — no existing token file needed. |
+| `load_design_context` | Parse an existing design baseline (tokens.css, tokens.json) into structured context. |
 | `lint_fix` | Biome format + lint on a source string. Returns reformatted source. |
 | `audit_ui` | UI wiring audit on a source string. |
 | `audit_a11y` | Accessibility audit on a source string. |
