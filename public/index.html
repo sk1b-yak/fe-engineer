@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FE Engineer · agent</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; background: #0c0c10; color: #e6e6ee;
+        font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        display: flex; justify-content: center; padding: 48px 20px;
+      }
+      main { width: 100%; max-width: 760px; }
+      h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .02em; }
+      .sub { color: #8a8aa0; margin: 0 0 28px; }
+      .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+        border: 1px solid #26263a; border-radius: 999px; margin-bottom: 28px; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: #c9a227; }
+      .dot.ok { background: #4edea3; box-shadow: 0 0 8px #4edea399; }
+      .dot.bad { background: #ff5d5d; }
+      section { border: 1px solid #1d1d2c; border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; background: #111119; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #9a9ab4; margin: 0 0 10px; }
+      code, pre { background: #07070b; border: 1px solid #1d1d2c; border-radius: 6px; }
+      code { padding: 1px 6px; }
+      pre { padding: 12px; overflow-x: auto; }
+      ul { margin: 0; padding-left: 18px; }
+      li { margin: 4px 0; }
+      b { color: #c7d0ff; }
+      a { color: #79b8ff; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>FE Engineer</h1>
+      <p class="sub">A front-end engineer agent on the Cloudflare Agents SDK — built-in Biome linting + UI wiring audit.</p>
+
+      <div class="status"><span id="dot" class="dot"></span><span id="statusText">checking agent…</span></div>
+
+      <section>
+        <h2>Capabilities</h2>
+        <ul>
+          <li><b>generate_component</b> — writes a React/TSX file, then runs a Biome lint-and-fix loop until the code is clean.</li>
+          <li><b>lint_fix</b> — format + lint + self-correct any code you paste.</li>
+          <li><b>audit_ui</b> — verifies every button does something: flags no-op handlers, handlers referencing undefined symbols, undefined components, and bare buttons. Optionally clicks every button on a live URL.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Connect (WebSocket)</h2>
+        <p>The agent is a Durable Object routed by the SDK. Each session is its own instance:</p>
+        <pre>wss://&lt;this-host&gt;/agents/fe-engineer/&lt;session-id&gt;</pre>
+        <p>Use the React client hooks for a full chat UI:</p>
+        <pre>import { useAgent } from "agents/react";
+import { useAgentChat } from "@cloudflare/ai-chat/react";
+
+const agent = useAgent({ agent: "FeEngineer", name: "playground" });
+const { messages, input, handleInputChange, handleSubmit } = useAgentChat({ agent });</pre>
+      </section>
+
+      <section>
+        <h2>Try it (chat)</h2>
+        <ul>
+          <li>"Build a Counter component with increment and reset buttons."</li>
+          <li>"Audit this component and make sure every button works." (paste code)</li>
+          <li>"Clean up this file." (paste code)</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module">
+      // Lightweight connectivity check: open the agent WebSocket and report status.
+      const dot = document.getElementById("dot");
+      const text = document.getElementById("statusText");
+      try {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        const ws = new WebSocket(`${proto}://${location.host}/agents/fe-engineer/playground`);
+        const fail = setTimeout(() => { dot.className = "dot bad"; text.textContent = "agent not reachable"; ws.close(); }, 4000);
+        ws.addEventListener("open", () => { clearTimeout(fail); dot.className = "dot ok"; text.textContent = "agent online"; ws.close(); });
+        ws.addEventListener("error", () => { clearTimeout(fail); dot.className = "dot bad"; text.textContent = "agent error"; });
+      } catch {
+        dot.className = "dot bad"; text.textContent = "agent unavailable";
+      }
+    </script>
+  </body>
+</html>

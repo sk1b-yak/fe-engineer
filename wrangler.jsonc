@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fe-engineer",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": { "enabled": true },
+
+  // Workers AI — used by the agent for code generation + lint-fix repair passes.
+  "ai": { "binding": "AI" },
+
+  // The agent is a SQLite-backed Durable Object.
+  "durable_objects": {
+    "bindings": [{ "name": "FeEngineer", "class_name": "FeEngineer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FeEngineer"] }],
+
+  // Optional: runtime UI audit (click-through) uses Browser Rendering via CdpSession.
+  // Requires Browser Rendering on the account; the static audit works without it.
+  "browser": { "binding": "BROWSER" },
+
+  // Static chat client (no build step required — see public/index.html).
+  "assets": { "directory": "./public", "binding": "ASSETS" }
+}

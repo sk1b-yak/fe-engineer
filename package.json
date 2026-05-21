@@ -1,0 +1,37 @@
+{
+  "name": "fe-engineer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Front-end engineer AI agent (Cloudflare Agents SDK) with built-in Biome linting and a UI wiring audit.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test:audit": "node --experimental-strip-types scripts/test-audit.ts",
+    "test:lint": "node --experimental-strip-types scripts/test-lint.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^3.0.190",
+    "@babel/parser": "^7.26.7",
+    "@babel/types": "^7.26.7",
+    "@biomejs/js-api": "^0.7.1",
+    "@biomejs/wasm-bundler": "^1.9.4",
+    "@biomejs/wasm-web": "^1.9.4",
+    "@cloudflare/ai-chat": "^0.7.1",
+    "@cloudflare/codemode": "^0.3.7",
+    "agents": "^0.13.1",
+    "ai": "^6.0.188",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "workers-ai-provider": "^3.1.14",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/wasm-nodejs": "^1.9.4",
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.0.0"
+  }
+}
