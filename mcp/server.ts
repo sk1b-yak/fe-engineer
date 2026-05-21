@@ -11,21 +11,24 @@
 //   }
 //
 // Tools exposed:
+//   generate_tokens  — Parse a DESIGN.md and emit a tokens.css (writes to disk)
+//   load_design_context — Read any design file and extract structured token context
 //   lint_fix         — Biome format + lint (NODE distribution)
 //   audit_ui         — JSX wiring audit (every button must do something)
 //   audit_a11y       — Accessibility audit (WCAG-referenced)
 //   scan_design      — Design-system anti-pattern scan (inline styles, hardcoded colours, etc.)
-//   read_file        — Read a local file and run all four audits at once
+//   review_file      — Read a local file and run all four audits at once
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { extname, dirname, join } from 'node:path';
 import { z } from 'zod';
 
 import { auditUi } from '../src/lib/ui-audit.ts';
 import { auditA11y } from './a11y-audit.ts';
 import { scanDesign, parseDesignContext, type ParsedDesignContext } from './design-scan.ts';
+import { generateTokensFromDesign } from './tokens-generator.ts';
 
 // Biome with NODE distribution (wasm-nodejs, not wasm-web used in the Worker).
 import { Biome, Distribution } from '@biomejs/js-api';
@@ -113,6 +116,59 @@ server.tool(
   async ({ code, filePath = 'Component.tsx' }) => {
     const report = auditA11y(code, filePath);
     return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+  },
+);
+
+// ── Tool: generate_tokens ────────────────────────────────────────────────────
+
+server.tool(
+  'generate_tokens',
+  'Parse a DESIGN.md (or any design doc) and generate a tokens.css file with CSS custom properties. Handles markdown tables with hex values, explicit CSS variable columns, and CSS code blocks. Writes the file to disk and returns a summary. Use this when you only have a design doc and need a machine-readable token file for design-aware scanning.',
+  {
+    designFile: z.string().describe('Path to the design doc (DESIGN.md, style-guide.md, etc.)'),
+    outputFile: z.string().optional().describe('Where to write tokens.css. Defaults to tokens.css in the same directory as the design file.'),
+    cwd: z.string().optional().describe('Working directory for resolving relative paths'),
+    dryRun: z.boolean().optional().describe('If true, return the generated CSS without writing to disk'),
+  },
+  async ({ designFile, outputFile, cwd, dryRun = false }) => {
+    const base = cwd ?? process.cwd();
+    const resolvedDesign = designFile.startsWith('/') || /^[A-Za-z]:/.test(designFile)
+      ? designFile
+      : `${base}/${designFile}`;
+
+    let content: string;
+    try {
+      content = readFileSync(resolvedDesign, 'utf8');
+    } catch (err) {
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ error: `Could not read design file: ${err}` }) }] };
+    }
+
+    const result = generateTokensFromDesign(resolvedDesign, content);
+
+    let writtenTo: string | null = null;
+    if (!dryRun) {
+      const outPath = outputFile
+        ? (outputFile.startsWith('/') || /^[A-Za-z]:/.test(outputFile) ? outputFile : `${base}/${outputFile}`)
+        : join(dirname(resolvedDesign), 'tokens.css');
+      try {
+        writeFileSync(outPath, result.css, 'utf8');
+        writtenTo = outPath;
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: `Could not write tokens.css: ${err}`, css: result.css }) }] };
+      }
+    }
+
+    const summary = {
+      writtenTo,
+      colorCount: result.colorCount,
+      spacingCount: result.spacingCount,
+      typographyCount: result.typographyCount,
+      totalTokens: result.tokens.length,
+      warnings: result.warnings,
+      tokens: result.tokens.map(t => ({ name: t.name, value: t.value, category: t.category })),
+      css: dryRun ? result.css : undefined,
+    };
+    return { content: [{ type: 'text' as const, text: JSON.stringify(summary, null, 2) }] };
   },
 );
 
