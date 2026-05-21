@@ -25,7 +25,7 @@ import { z } from 'zod';
 
 import { auditUi } from '../src/lib/ui-audit.ts';
 import { auditA11y } from './a11y-audit.ts';
-import { scanDesign } from './design-scan.ts';
+import { scanDesign, parseDesignContext, type ParsedDesignContext } from './design-scan.ts';
 
 // Biome with NODE distribution (wasm-nodejs, not wasm-web used in the Worker).
 import { Biome, Distribution } from '@biomejs/js-api';
@@ -116,17 +116,55 @@ server.tool(
   },
 );
 
+// ── Tool: load_design_context ────────────────────────────────────────────────
+
+server.tool(
+  'load_design_context',
+  'Read a design baseline file (DESIGN.md, tokens.css, tokens.json, style-guide.md, etc.) and extract structured context: color tokens, spacing tokens, and component names. Pass the returned object as designContext to scan_design or review_file to ground findings in your actual design system rather than generic rules.',
+  {
+    filePath: z.string().describe('Absolute or relative path to the design file'),
+    cwd: z.string().optional().describe('Working directory for resolving relative paths'),
+  },
+  async ({ filePath, cwd }) => {
+    const base = cwd ?? process.cwd();
+    const resolved = filePath.startsWith('/') || /^[A-Za-z]:/.test(filePath)
+      ? filePath
+      : `${base}/${filePath}`;
+    let content: string;
+    try {
+      content = readFileSync(resolved, 'utf8');
+    } catch (err) {
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ error: `Could not read file: ${err}` }) }] };
+    }
+    const ctx = parseDesignContext(resolved, content);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(ctx, null, 2) }] };
+  },
+);
+
 // ── Tool: scan_design ────────────────────────────────────────────────────────
 
 server.tool(
   'scan_design',
-  'Static design-quality scan: flags inline style props, hardcoded hex/rgb colours, off-grid spacing values, God Components (> 150 JSX elements), deeply nested ternaries, missing list keys, and absent semantic HTML. Use alongside visual review.',
+  'Static design-quality scan: flags inline style props, hardcoded hex/rgb colours, off-grid spacing values, God Components (> 150 JSX elements), deeply nested ternaries, missing list keys, and absent semantic HTML. Pass designFile (path to DESIGN.md, tokens.css, etc.) to ground findings in your actual design system.',
   {
     code: z.string().describe('JSX/TSX source to scan'),
     filePath: z.string().optional().describe("Filename e.g. 'Dashboard.tsx'"),
+    designFile: z.string().optional().describe('Path to a design baseline file (DESIGN.md, tokens.css, tokens.json). When provided, findings are annotated with design-system context.'),
+    cwd: z.string().optional().describe('Working directory for resolving designFile if relative'),
   },
-  async ({ code, filePath = 'Component.tsx' }) => {
-    const report = scanDesign(code, filePath);
+  async ({ code, filePath = 'Component.tsx', designFile, cwd }) => {
+    let designContext: ParsedDesignContext | undefined;
+    if (designFile) {
+      const base = cwd ?? process.cwd();
+      const resolved = designFile.startsWith('/') || /^[A-Za-z]:/.test(designFile)
+        ? designFile
+        : `${base}/${designFile}`;
+      try {
+        const content = readFileSync(resolved, 'utf8');
+        designContext = parseDesignContext(resolved, content);
+      } catch { /* proceed without design context */ }
+    }
+    const report = scanDesign(code, filePath, designContext);
     return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
   },
 );
@@ -135,12 +173,13 @@ server.tool(
 
 server.tool(
   'review_file',
-  'Read a local .tsx/.jsx/.ts file by path and run all four audits (lint, UI wiring, accessibility, design scan) in one call. Returns a combined report. Use this as the starting point for any design review.',
+  'Read a local .tsx/.jsx/.ts file by path and run all four audits (lint, UI wiring, accessibility, design scan) in one call. Returns a combined report. Pass designFile (path to DESIGN.md, tokens.css, etc.) to ground the design scan in your actual system. Use this as the starting point for any design review.',
   {
     filePath: z.string().describe('Absolute or relative path to the file on disk'),
     cwd: z.string().optional().describe('Working directory for resolving relative paths (defaults to process.cwd())'),
+    designFile: z.string().optional().describe('Path to a design baseline file (DESIGN.md, tokens.css, tokens.json, style-guide.md). When provided, design findings reference your system specifically rather than generic rules.'),
   },
-  async ({ filePath, cwd }) => {
+  async ({ filePath, cwd, designFile }) => {
     const base = cwd ?? process.cwd();
     const resolved = filePath.startsWith('/') || /^[A-Za-z]:/.test(filePath)
       ? filePath
@@ -155,6 +194,17 @@ server.tool(
 
     const ext = extname(resolved).toLowerCase();
     const isJsx = ['.tsx', '.jsx'].includes(ext);
+
+    let designContext: ParsedDesignContext | undefined;
+    if (designFile) {
+      const designResolved = designFile.startsWith('/') || /^[A-Za-z]:/.test(designFile)
+        ? designFile
+        : `${base}/${designFile}`;
+      try {
+        const dc = readFileSync(designResolved, 'utf8');
+        designContext = parseDesignContext(designResolved, dc);
+      } catch { /* proceed without design context */ }
+    }
 
     const biome = await getBiome();
     let formatted = code;
@@ -185,7 +235,7 @@ server.tool(
       ...(isJsx ? {
         uiWiring: auditUi(code, resolved),
         a11y: auditA11y(code, resolved),
-        design: scanDesign(code, resolved),
+        design: scanDesign(code, resolved, designContext),
       } : {}),
     };
 

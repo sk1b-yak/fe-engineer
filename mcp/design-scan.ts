@@ -34,6 +34,77 @@ export interface DesignReport {
   errorCount: number;
   warningCount: number;
   infoCount: number;
+  /** Parsed design context extracted from a loaded design file, if provided. */
+  designContext?: ParsedDesignContext;
+}
+
+export interface ParsedDesignContext {
+  /** Path to the design baseline file that was loaded. */
+  sourceFile: string;
+  /** Raw text of the design file (truncated to 8 KB for context window hygiene). */
+  raw: string;
+  /** Color tokens extracted from CSS custom properties (--color-* etc.). */
+  colorTokens: string[];
+  /** Spacing tokens extracted from CSS custom properties (--space-*, --gap-* etc.). */
+  spacingTokens: string[];
+  /** Component names mentioned in the design doc. */
+  components: string[];
+}
+
+// ── Design context parser ────────────────────────────────────────────────────
+
+/**
+ * Parse a design baseline file (DESIGN.md, tokens.css, tokens.json, etc.)
+ * into a structured context Claude can use when evaluating findings.
+ */
+export function parseDesignContext(filePath: string, content: string): ParsedDesignContext {
+  const raw = content.length > 8192 ? content.slice(0, 8192) + '\n… [truncated]' : content;
+
+  // CSS custom properties: --color-*, --space-*, --gap-*, --radius-* etc.
+  const colorTokens: string[] = [];
+  const spacingTokens: string[] = [];
+  const cssVarRe = /--([\w-]+)\s*:/g;
+  let m: RegExpExecArray | null;
+  while ((m = cssVarRe.exec(content)) !== null) {
+    const name = m[1]!;
+    if (/^color|^bg|^text|^border-color|^fill/.test(name)) colorTokens.push(`--${name}`);
+    else if (/^space|^gap|^padding|^margin|^radius|^size/.test(name)) spacingTokens.push(`--${name}`);
+  }
+
+  // JSON token files: keys ending in Color, Background, Border, Spacing, Gap
+  if (filePath.endsWith('.json')) {
+    try {
+      const flat = flattenJson(JSON.parse(content));
+      for (const key of Object.keys(flat)) {
+        if (/color|background|border/i.test(key)) colorTokens.push(key);
+        else if (/spacing|gap|padding|margin|radius/i.test(key)) spacingTokens.push(key);
+      }
+    } catch { /* not valid JSON */ }
+  }
+
+  // Markdown / plain text: extract PascalCase component names from headings & code spans
+  const components: string[] = [];
+  const compRe = /`([A-Z][A-Za-z0-9]+)`/g;
+  while ((m = compRe.exec(content)) !== null) components.push(m[1]!);
+  // Also grab ## headings that look like component names
+  const headingRe = /^#{1,3}\s+([A-Z][A-Za-z0-9]+)/gm;
+  while ((m = headingRe.exec(content)) !== null) components.push(m[1]!);
+
+  return {
+    sourceFile: filePath,
+    raw,
+    colorTokens: [...new Set(colorTokens)],
+    spacingTokens: [...new Set(spacingTokens)],
+    components: [...new Set(components)],
+  };
+}
+
+function flattenJson(obj: unknown, prefix = '', out: Record<string, unknown> = {}): Record<string, unknown> {
+  if (typeof obj !== 'object' || obj === null) { out[prefix] = obj; return out; }
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    flattenJson(v, prefix ? `${prefix}.${k}` : k, out);
+  }
+  return out;
 }
 
 // ── AST helpers ──────────────────────────────────────────────────────────────
@@ -132,7 +203,7 @@ function scanStyleObject(obj: Node, findings: DesignFinding[]): void {
 
 // ── Main scan ────────────────────────────────────────────────────────────────
 
-export function scanDesign(code: string, filePath = 'Component.tsx'): DesignReport {
+export function scanDesign(code: string, filePath = 'Component.tsx', designContext?: ParsedDesignContext): DesignReport {
   let ast: Node;
   try {
     ast = parse(code, {
@@ -251,5 +322,5 @@ export function scanDesign(code: string, filePath = 'Component.tsx'): DesignRepo
   const warningCount = findings.filter(f => f.severity === 'warning').length;
   const infoCount = findings.filter(f => f.severity === 'info').length;
   return { filePath, componentCount, jsxElementCount, inlineStyleCount, findings,
-    errorCount, warningCount, infoCount };
+    errorCount, warningCount, infoCount, ...(designContext ? { designContext } : {}) };
 }
