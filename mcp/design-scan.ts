@@ -67,7 +67,7 @@ export function parseDesignContext(filePath: string, content: string): ParsedDes
   let m: RegExpExecArray | null;
   while ((m = cssVarRe.exec(content)) !== null) {
     const name = m[1]!;
-    if (/^color|^bg|^text|^border-color|^fill/.test(name)) colorTokens.push(`--${name}`);
+    if (/^color|^bg|^border-color|^fill/.test(name)) colorTokens.push(`--${name}`);
     else if (/^space|^gap|^padding|^margin|^radius|^size/.test(name)) spacingTokens.push(`--${name}`);
   }
 
