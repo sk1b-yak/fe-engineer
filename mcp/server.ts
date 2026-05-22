@@ -6,9 +6,11 @@
 //   "mcpServers": {
 //     "fe-engineer": {
 //       "command": "node",
-//       "args": ["--experimental-strip-types", "C:/Users/saqib/dev/fe-engineer/mcp/server.ts"]
+//       "args": ["--experimental-strip-types", "/absolute/path/to/fe-engineer/mcp/server.ts"]
 //     }
 //   }
+//
+// ⚠️ Replace '/absolute/path/to' with your actual installation directory
 //
 // Tools exposed:
 //   generate_tokens  — Parse a DESIGN.md and emit a tokens.css (writes to disk)
@@ -46,14 +48,14 @@ async function getBiome(): Promise<Biome> {
   return _biome;
 }
 
-// ── Server ───────────────────────────────────────────────────────────────────
+// ── Server ─────────────────────────────────────────────────────────────
 
 const server = new McpServer({
   name: 'fe-engineer',
   version: '0.2.0',
 });
 
-// ── Tool: lint_fix ───────────────────────────────────────────────────────────
+// ── Tool: lint_fix ─────────────────────────────────────────────────────────
 
 server.tool(
   'lint_fix',
@@ -89,11 +91,11 @@ server.tool(
   },
 );
 
-// ── Tool: audit_ui ───────────────────────────────────────────────────────────
+// ── Tool: audit_ui ─────────────────────────────────────────────────────────
 
 server.tool(
   'audit_ui',
-  'Audit every interactive element in a React component: flags empty onClick handlers, handlers referencing undefined symbols, buttons with no handler, and undefined components. Use before shipping any UI.',
+  'Audit every interactive element in a React component: flags empty onClick handlers, handlers referencing undefined symbols, buttons with no handler, and undefined components. Use before shipping.',
   {
     code: z.string().describe('JSX/TSX source to audit'),
     filePath: z.string().optional().describe("Filename e.g. 'Panel.tsx'"),
@@ -104,11 +106,11 @@ server.tool(
   },
 );
 
-// ── Tool: audit_a11y ─────────────────────────────────────────────────────────
+// ── Tool: audit_a11y ────────────────────────────────────────────────────────
 
 server.tool(
   'audit_a11y',
-  'Accessibility audit: checks for missing alt text, unlabelled inputs, non-semantic interactive elements, icon-only buttons with no aria-label, bare SVGs, and more. Each finding references the relevant WCAG criterion.',
+  'Accessibility audit: checks for missing alt text, unlabelled inputs, non-semantic interactive elements, icon-only buttons with no aria-label, bare SVGs, and more. Each finding references the relevant WCAG guideline.',
   {
     code: z.string().describe('JSX/TSX source to audit'),
     filePath: z.string().optional().describe("Filename e.g. 'Form.tsx'"),
@@ -123,7 +125,7 @@ server.tool(
 
 server.tool(
   'generate_tokens',
-  'Parse a DESIGN.md (or any design doc) and generate a tokens.css file with CSS custom properties. Handles markdown tables with hex values, explicit CSS variable columns, and CSS code blocks. Writes the file to disk and returns a summary. Use this when you only have a design doc and need a machine-readable token file for design-aware scanning.',
+  'Parse a DESIGN.md (or any design doc) and generate a tokens.css file with CSS custom properties. Handles markdown tables with hex values, explicit CSS variable columns, and CSS code blocks. Writes to disk by default.',
   {
     designFile: z.string().describe('Path to the design doc (DESIGN.md, style-guide.md, etc.)'),
     outputFile: z.string().optional().describe('Where to write tokens.css. Defaults to tokens.css in the same directory as the design file.'),
@@ -176,7 +178,7 @@ server.tool(
 
 server.tool(
   'load_design_context',
-  'Read a design baseline file (DESIGN.md, tokens.css, tokens.json, style-guide.md, etc.) and extract structured context: color tokens, spacing tokens, and component names. Pass the returned object as designContext to scan_design or review_file to ground findings in your actual design system rather than generic rules.',
+  'Read a design baseline file (DESIGN.md, tokens.css, tokens.json, style-guide.md, etc.) and extract structured context: color tokens, spacing tokens, and component names. Pass the returned object as designContext to scan_design.',
   {
     filePath: z.string().describe('Absolute or relative path to the design file'),
     cwd: z.string().optional().describe('Working directory for resolving relative paths'),
@@ -197,11 +199,11 @@ server.tool(
   },
 );
 
-// ── Tool: scan_design ────────────────────────────────────────────────────────
+// ── Tool: scan_design ───────────────────────────────────────────────────────
 
 server.tool(
   'scan_design',
-  'Static design-quality scan: flags inline style props, hardcoded hex/rgb colours, off-grid spacing values, God Components (> 150 JSX elements), deeply nested ternaries, missing list keys, and absent semantic HTML. Pass designFile (path to DESIGN.md, tokens.css, etc.) to ground findings in your actual design system.',
+  'Static design-quality scan: flags inline style props, hardcoded hex/rgb colours, off-grid spacing values, God Components (> 150 JSX elements), deeply nested ternaries, missing list keys, and anti-patterns. Pass designContext from load_design_context to ground findings in your token set.',
   {
     code: z.string().describe('JSX/TSX source to scan'),
     filePath: z.string().optional().describe("Filename e.g. 'Dashboard.tsx'"),
@@ -225,15 +227,15 @@ server.tool(
   },
 );
 
-// ── Tool: review_file ────────────────────────────────────────────────────────
+// ── Tool: review_file ───────────────────────────────────────────────────────
 
 server.tool(
   'review_file',
-  'Read a local .tsx/.jsx/.ts file by path and run all four audits (lint, UI wiring, accessibility, design scan) in one call. Returns a combined report. Pass designFile (path to DESIGN.md, tokens.css, etc.) to ground the design scan in your actual system. Use this as the starting point for any design review.',
+  'Read a local .tsx/.jsx/.ts file by path and run all four audits (lint, UI wiring, accessibility, design scan) in one call. Returns a combined report. Pass designFile (path to DESIGN.md, tokens.css, etc.) to annotate findings with your design system.',
   {
     filePath: z.string().describe('Absolute or relative path to the file on disk'),
     cwd: z.string().optional().describe('Working directory for resolving relative paths (defaults to process.cwd())'),
-    designFile: z.string().optional().describe('Path to a design baseline file (DESIGN.md, tokens.css, tokens.json, style-guide.md). When provided, design findings reference your system specifically rather than generic rules.'),
+    designFile: z.string().optional().describe('Path to a design baseline file (DESIGN.md, tokens.css, tokens.json, style-guide.md). When provided, design findings reference your system specifics.'),
   },
   async ({ filePath, cwd, designFile }) => {
     const base = cwd ?? process.cwd();
@@ -299,7 +301,7 @@ server.tool(
   },
 );
 
-// ── Start ────────────────────────────────────────────────────────────────────
+// ── Start ───────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
