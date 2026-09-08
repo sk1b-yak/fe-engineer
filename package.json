@@ -18,7 +18,7 @@
     "test": "npm run test:audit && npm run test:lint"
   },
   "dependencies": {
-    "@ai-sdk/react": "^3.0.190",
+    "@ai-sdk/react": "^3.0.280",
     "@babel/parser": "^7.26.7",
     "@babel/types": "^7.26.7",
     "@biomejs/js-api": "^0.7.1",
@@ -27,7 +27,7 @@
     "@cloudflare/ai-chat": "^0.7.1",
     "@cloudflare/codemode": "^0.3.7",
     "agents": "^0.13.1",
-    "ai": "^6.0.188",
+    "ai": "^6.0.277",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "workers-ai-provider": "^3.1.14",
